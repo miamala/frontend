@@ -2,7 +2,6 @@
 	import { onMount } from 'svelte';
 
 	let mediaRecorder: MediaRecorder | null = null;
-	// let audioElement: HTMLAudioElement | null = null;
 	let canvasElement: HTMLCanvasElement | null = null;
 	let audioCtx: AudioContext | null = null;
 	let fileInput: HTMLInputElement | null = null;
@@ -12,7 +11,6 @@
 
 	const saveChunk = (event: BlobEvent): void => {
 		chunks.push(event.data);
-		console.log('Pushed', event.data);
 	};
 
 	async function startRecording() {
@@ -21,13 +19,8 @@
 			return;
 		}
 
-		mediaRecorder.start();
-
-		console.log(mediaRecorder.state);
-		console.log('recorder started');
-
 		recording = true;
-		mediaRecorder.ondataavailable = saveChunk;
+		mediaRecorder.start();
 	}
 
 	async function stopRecording() {
@@ -36,25 +29,30 @@
 			return;
 		}
 
-		mediaRecorder.stop();
-
-		console.log(mediaRecorder.state);
-		console.log('recorder stopped');
 		recording = false;
+		mediaRecorder.stop();
+	}
 
-		mediaRecorder.ondataavailable = null;
-
-		console.log(chunks);
-
+	async function handleStop() {
 		const blob = new Blob(chunks, {
-			type: 'audio/ogg; codecs=opus'
+			type: 'audio/wav'
 		});
 
+		// Clear audio buffer
 		chunks.length = 0;
-		const audioURL = window.URL.createObjectURL(blob);
-		// audioElement!.src = audioURL;
 
-		console.log(audioURL);
+		const formData = new FormData();
+		formData.append('file', blob, 'audio.wav');
+
+		const response = await fetch('http://localhost:1323/upload', {
+			method: 'POST',
+			body: formData
+		});
+
+		const data = await response.json();
+
+		const transaction: Transaction = JSON.parse(data);
+		transactions = [...transactions, transaction];
 	}
 
 	async function main() {
@@ -65,6 +63,10 @@
 				});
 
 				mediaRecorder = new MediaRecorder(stream);
+
+				mediaRecorder.addEventListener('dataavailable', saveChunk);
+				mediaRecorder.addEventListener('stop', handleStop);
+
 				visualize(stream);
 			} catch (err) {
 				console.error(`The following getUserMedia error occurred: ${err}`);
@@ -118,8 +120,7 @@
 			canvasCtx?.clearRect(0, 0, WIDTH, HEIGHT);
 
 			canvasCtx!.lineWidth = 2;
-			canvasCtx!.strokeStyle = 'rgb(0, 0, 0)';
-
+			canvasCtx!.strokeStyle = 'rgb(10, 10, 10)';
 			canvasCtx!.beginPath();
 
 			let sliceWidth = (WIDTH * 1.0) / bufferLength;
@@ -170,14 +171,13 @@
 		const data = await response.json();
 		const transaction: Transaction = JSON.parse(data);
 
-		transactions = [
-			...transactions,
-			transaction
-		];
+		transactions = [...transactions, transaction];
 	}
 
 	onMount(() => {
 		main();
+
+		fileInput?.addEventListener('change', handleSubmit);
 	});
 </script>
 
@@ -223,7 +223,7 @@
 			<label class="btn btn-outline" for="file_input"> Upload </label>
 			<input class="hidden" id="file_input" type="file" name="file" bind:this={fileInput} />
 
-			<input type="submit" value="Submit" class="btn btn-primary" />
+			<input type="submit" value="Submit" class="btn btn-primary hidden" />
 		</form>
 	</div>
 
